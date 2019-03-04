@@ -41,15 +41,6 @@
 
             {{ $File := .File }}
             {{ $Site := .Site }}
-
-              {{with $File.Path }}
-              <div id="top-github-link">
-                <a class="github-link" href="{{ $Site.Params.editURL }}{{ replace $File.Dir "\\" "/" }}{{ $File.LogicalName }}" target="blank">
-                  <i class="fa fa-code-fork"></i>
-                  {{T "Edit-this-page"}}
-                </a>
-              </div>
-              {{- end }}
               {{with $Site.Menus.shortcuts}}
               <div id="top-github-link">
                   {{ range sort . "Weight"}}
