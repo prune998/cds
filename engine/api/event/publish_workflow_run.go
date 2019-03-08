@@ -83,36 +83,24 @@ func PublishWorkflowNodeRun(db gorp.SqlExecutor, nr sdk.WorkflowNodeRun, w sdk.W
 	var nodeName string
 	var app sdk.Application
 	var env sdk.Environment
-	n := w.GetNode(nr.WorkflowNodeID)
-	if n == nil {
-		// check on workflow data
-		wnode := w.WorkflowData.NodeByID(nr.WorkflowNodeID)
-		if wnode == nil {
-			log.Warning("PublishWorkflowNodeRun> Unable to publish event on node %d", nr.WorkflowNodeID)
-			return
-		}
-		nodeName = wnode.Name
-		if wnode.Context != nil && wnode.Context.PipelineID != 0 {
-			pipName = w.Pipelines[wnode.Context.PipelineID].Name
-		}
 
-		if wnode.Context != nil && wnode.Context.ApplicationID != 0 {
-			app = w.Applications[wnode.Context.ApplicationID]
-		}
-		if wnode.Context != nil && wnode.Context.EnvironmentID != 0 {
-			env = w.Environments[wnode.Context.EnvironmentID]
-		}
-	} else {
-		nodeName = n.Name
-		pipName = w.Pipelines[n.PipelineID].Name
-		if n.Context != nil && n.Context.Application != nil {
-			app = *n.Context.Application
-		}
-		if n.Context != nil && n.Context.Environment != nil {
-			env = *n.Context.Environment
-		}
+	// check on workflow data
+	wnode := w.WorkflowData.NodeByID(nr.WorkflowNodeID)
+	if wnode == nil {
+		log.Warning("PublishWorkflowNodeRun> Unable to publish event on node %d", nr.WorkflowNodeID)
+		return
+	}
+	nodeName = wnode.Name
+	if wnode.Context != nil && wnode.Context.PipelineID != 0 {
+		pipName = w.Pipelines[wnode.Context.PipelineID].Name
 	}
 
+	if wnode.Context != nil && wnode.Context.ApplicationID != 0 {
+		app = w.Applications[wnode.Context.ApplicationID]
+	}
+	if wnode.Context != nil && wnode.Context.EnvironmentID != 0 {
+		env = w.Environments[wnode.Context.EnvironmentID]
+	}
 	e.NodeName = nodeName
 	var envName string
 	var appName string

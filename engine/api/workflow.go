@@ -107,23 +107,6 @@ func (api *API) getWorkflowHandler() service.Handler {
 		}
 
 		w1.Permission = permission.WorkflowPermission(key, w1.Name, deprecatedGetUser(ctx))
-
-		// FIXME Sync hooks on new model. To delete when hooks will be compute on new model
-		hooks := w1.GetHooks()
-		w1.WorkflowData.Node.Hooks = make([]sdk.NodeHook, 0, len(hooks))
-		for _, h := range hooks {
-			w1.WorkflowData.Node.Hooks = append(w1.WorkflowData.Node.Hooks, sdk.NodeHook{
-				Ref:           h.Ref,
-				HookModelID:   h.WorkflowHookModelID,
-				Config:        h.Config,
-				UUID:          h.UUID,
-				HookModelName: h.WorkflowHookModel.Name,
-				NodeID:        w1.WorkflowData.Node.ID,
-			})
-		}
-
-		//We filter project and workflow configurtaion key, because they are always set on insertHooks
-		w1.FilterHooksConfig(sdk.HookConfigProject, sdk.HookConfigWorkflow)
 		return service.WriteJSON(w, w1, http.StatusOK)
 	}
 }
@@ -340,8 +323,6 @@ func (api *API) postWorkflowHandler() service.Handler {
 			return sdk.WrapError(err, "postWorkflowHandler> Cannot rename node")
 		}
 
-		(&wf).RetroMigrate()
-
 		wf.ProjectID = p.ID
 		wf.ProjectKey = key
 
@@ -350,14 +331,6 @@ func (api *API) postWorkflowHandler() service.Handler {
 			return sdk.WrapError(errT, "Cannot start transaction")
 		}
 		defer tx.Rollback()
-
-		if wf.Root != nil && wf.Root.Context != nil && (wf.Root.Context.Application != nil || wf.Root.Context.ApplicationID != 0) {
-			var err error
-			if wf.Root.Context.DefaultPayload, err = workflow.DefaultPayload(ctx, tx, api.Cache, p, &wf); err != nil {
-				log.Warning("postWorkflowHandler> Cannot set default payload : %v", err)
-			}
-			wf.WorkflowData.Node.Context.DefaultPayload = wf.Root.Context.DefaultPayload
-		}
 
 		if err := workflow.Insert(tx, api.Cache, &wf, p, deprecatedGetUser(ctx)); err != nil {
 			return sdk.WrapError(err, "Cannot insert workflow")
@@ -375,13 +348,6 @@ func (api *API) postWorkflowHandler() service.Handler {
 		if errl != nil {
 			return sdk.WrapError(errl, "Cannot load workflow")
 		}
-
-		//We filter project and workflow configurtaion key, because they are always set on insertHooks
-		wf1.FilterHooksConfig(sdk.HookConfigProject, sdk.HookConfigWorkflow)
-
-		// TODO REMOVE WHEN WE WILL DELETE OLD NODE STRUCT
-		wf1.Root = nil
-		wf1.Joins = nil
 		return service.WriteJSON(w, wf1, http.StatusCreated)
 	}
 }
@@ -417,13 +383,7 @@ func (api *API) putWorkflowHandler() service.Handler {
 			return sdk.WrapError(err, "Update> cannot check pipeline name")
 		}
 
-		// TODO : Delete in migration step 3
-		// Retro migrate workflow
-		(&wf).RetroMigrate()
-
 		wf.ID = oldW.ID
-		wf.RootID = oldW.RootID
-		wf.Root.ID = oldW.RootID
 		wf.ProjectID = p.ID
 		wf.ProjectKey = key
 
@@ -432,15 +392,6 @@ func (api *API) putWorkflowHandler() service.Handler {
 			return sdk.WrapError(errT, "putWorkflowHandler> Cannot start transaction")
 		}
 		defer tx.Rollback()
-
-		// TODO Remove old struct
-		if wf.Root.Context != nil && (wf.Root.Context.Application != nil || wf.Root.Context.ApplicationID != 0) {
-			var err error
-			if wf.Root.Context.DefaultPayload, err = workflow.DefaultPayload(ctx, tx, api.Cache, p, &wf); err != nil {
-				log.Warning("putWorkflowHandler> Cannot set default payload : %v", err)
-			}
-			wf.WorkflowData.Node.Context.DefaultPayload = wf.Root.Context.DefaultPayload
-		}
 
 		if err := workflow.Update(ctx, tx, api.Cache, &wf, oldW, p, deprecatedGetUser(ctx)); err != nil {
 			return sdk.WrapError(err, "Cannot update workflow")
@@ -451,7 +402,7 @@ func (api *API) putWorkflowHandler() service.Handler {
 			return sdk.WrapError(errHr, "putWorkflowHandler> HookRegistration")
 		}
 
-		if defaultTags, ok := wf.Metadata["default_tags"]; wf.Root.IsLinkedToRepo() && (!ok || defaultTags == "") {
+		if defaultTags, ok := wf.Metadata["default_tags"]; wf.WorkflowData.Node.IsLinkedToRepo(&wf) && (!ok || defaultTags == "") {
 			if wf.Metadata == nil {
 				wf.Metadata = sdk.Metadata{}
 			}
@@ -475,12 +426,6 @@ func (api *API) putWorkflowHandler() service.Handler {
 			return sdk.WrapError(errU, "Cannot load usage")
 		}
 		wf1.Usage = &usage
-
-		//We filter project and workflow configuration key, because they are always set on insertHooks
-		wf1.FilterHooksConfig(sdk.HookConfigProject, sdk.HookConfigWorkflow)
-		// TODO REMOVE
-		wf1.Root = nil
-		wf1.Joins = nil
 		return service.WriteJSON(w, wf1, http.StatusOK)
 	}
 }
@@ -559,7 +504,7 @@ func (api *API) getWorkflowHookHandler() service.Handler {
 			return sdk.WrapError(errW, "getWorkflowHookHandler> Cannot load Workflow %s/%s", key, name)
 		}
 
-		whooks := wf.GetHooks()
+		whooks := wf.WorkflowData.GetHooks()
 		_, has := whooks[uuid]
 		if !has {
 			return sdk.WrapError(sdk.ErrNotFound, "getWorkflowHookHandler> Cannot load Workflow %s/%s hook %s", key, name, uuid)

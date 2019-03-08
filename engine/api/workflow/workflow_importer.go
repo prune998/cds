@@ -32,18 +32,14 @@ func Import(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj *s
 
 	//Manage default payload
 	var err error
-	if w.Root.Context == nil {
-		w.Root.Context = &sdk.WorkflowNodeContext{}
-	}
 	if w.WorkflowData.Node.Context == nil {
 		w.WorkflowData.Node.Context = &sdk.NodeContext{}
 	}
 
 	// TODO compute on WD.Node
-	if w.Root.Context.DefaultPayload, err = DefaultPayload(ctx, db, store, proj, w); err != nil {
+	if w.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, store, proj, w); err != nil {
 		log.Warning("workflow.Import> Cannot set default payload : %v", err)
 	}
-	w.WorkflowData.Node.Context.DefaultPayload = w.Root.Context.DefaultPayload
 
 	// create the workflow if not exists
 	if oldW == nil {
@@ -73,8 +69,8 @@ func Import(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj *s
 
 	// Retrieve existing hook
 	oldHooks := oldW.WorkflowData.GetHooksMapRef()
-	for i := range w.Root.Hooks {
-		h := &w.Root.Hooks[i]
+	for i := range w.WorkflowData.Node.Hooks {
+		h := &w.WorkflowData.Node.Hooks[i]
 		if h.Ref != "" {
 			if oldH, has := oldHooks[h.Ref]; has {
 				h.Config = oldH.Config

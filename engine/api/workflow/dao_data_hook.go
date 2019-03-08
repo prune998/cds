@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/go-gorp/gorp"
@@ -83,4 +84,67 @@ func (h *dbNodeHookData) PostUpdate(db gorp.SqlExecutor) error {
 		return sdk.WrapError(err, "dbNodeHookData.PostUpdate> Unable to update config")
 	}
 	return nil
+}
+
+// LoadHookByUUID loads a single hook
+func LoadHookByUUID(db gorp.SqlExecutor, uuid string) (*sdk.NodeHook, error) {
+	query := `
+		SELECT *
+			FROM w_node_hook
+		WHERE uuid = $1`
+
+	res := dbNodeHookData{}
+	if err := db.SelectOne(&res, query, uuid); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, sdk.WithStack(err)
+	}
+
+	if err := res.PostGet(db); err != nil {
+		return nil, sdk.WrapError(err, "cannot load postget")
+	}
+	wNodeHook := sdk.NodeHook(res)
+
+	return &wNodeHook, nil
+}
+
+//PostGet is a db hook
+func (r *dbNodeHookData) PostGet(db gorp.SqlExecutor) error {
+	var res = struct {
+		Config sql.NullString `db:"config"`
+	}{}
+	if err := db.SelectOne(&res, "select config from w_node_hook where id = $1", r.ID); err != nil {
+		return err
+	}
+
+	conf := sdk.WorkflowNodeHookConfig{}
+
+	if err := gorpmapping.JSONNullString(res.Config, &conf); err != nil {
+		return err
+	}
+
+	r.Config = conf
+	return nil
+}
+
+// LoadAllHooks returns all hooks
+func LoadAllHooks(db gorp.SqlExecutor) ([]sdk.NodeHook, error) {
+	res := []dbNodeHookData{}
+	if _, err := db.Select(&res, "select * from workflow_node_hook"); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, sdk.WrapError(err, "LoadAllHooks")
+	}
+
+	nodes := make([]sdk.NodeHook, 0, len(res))
+	for i := range res {
+		if err := res[i].PostGet(db); err != nil {
+			return nil, sdk.WrapError(err, "LoadAllHooks")
+		}
+		nodes = append(nodes, sdk.NodeHook(res[i]))
+	}
+
+	return nodes, nil
 }

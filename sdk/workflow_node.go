@@ -41,6 +41,35 @@ type NodeHook struct {
 	Config        WorkflowNodeHookConfig `json:"config" db:"-"`
 }
 
+//Equals checks functionnal equality between two hooks
+func (h NodeHook) Equals(h1 NodeHook) bool {
+	if h.UUID != h1.UUID {
+		return false
+	}
+	if h.HookModelID != h1.HookModelID {
+		return false
+	}
+	for k, cfg := range h.Config {
+		cfg1, has := h1.Config[k]
+		if !has {
+			return false
+		}
+		if cfg.Value != cfg1.Value {
+			return false
+		}
+	}
+	for k, cfg1 := range h1.Config {
+		cfg, has := h.Config[k]
+		if !has {
+			return false
+		}
+		if cfg.Value != cfg1.Value {
+			return false
+		}
+	}
+	return true
+}
+
 // NodeContext represents a node linked to a pipeline
 type NodeContext struct {
 	ID                        int64                  `json:"id" db:"id"`

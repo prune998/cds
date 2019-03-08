@@ -75,9 +75,9 @@ func (api *API) repositoriesManagerAuthorizeHandler() service.Handler {
 			"project_key":          proj.Key,
 			"last_modified":        strconv.FormatInt(time.Now().Unix(), 10),
 			"repositories_manager": rmName,
-			"url":           url,
-			"request_token": token,
-			"username":      deprecatedGetUser(ctx).Username,
+			"url":                  url,
+			"request_token":        token,
+			"username":             deprecatedGetUser(ctx).Username,
 		}
 
 		api.Cache.Set(cache.Key("reposmanager", "oauth", token), data)
@@ -411,38 +411,39 @@ func (api *API) attachRepositoriesManagerHandler() service.Handler {
 		if len(usage.Workflows) > 0 {
 			proj, errP := project.Load(db, api.Cache, projectKey, u)
 			if errP != nil {
-				return sdk.WrapError(errP, "attachRepositoriesManager> Cannot load project")
+				return sdk.WrapError(errP, "cannot load project")
 			}
 
-			for _, wf := range usage.Workflows {
-				rootCtx, errNc := workflow.LoadNodeContext(db, api.Cache, proj, wf.RootID, u, workflow.LoadOptions{})
-				if errNc != nil {
-					return sdk.WrapError(errNc, "attachRepositoriesManager> Cannot DefaultPayloadToMap")
+			for i := range usage.Workflows {
+				wf := &usage.Workflows[i]
+				if wf.WorkflowData.Node.Context == nil {
+					wf.WorkflowData.Node.Context = &sdk.NodeContext{}
 				}
-
-				if rootCtx.ApplicationID != app.ID {
+				if wf.WorkflowData.Node.Context.ApplicationID != app.ID {
 					continue
 				}
 
-				wf.Root = &sdk.WorkflowNode{
-					Context: rootCtx,
-				}
-				payload, errD := rootCtx.DefaultPayloadToMap()
+				payload, errD := wf.WorkflowData.Node.Context.DefaultPayloadToMap()
 				if errD != nil {
-					return sdk.WrapError(errP, "attachRepositoriesManager> Cannot DefaultPayloadToMap")
+					return sdk.WrapError(errP, "cannot DefaultPayloadToMap")
 				}
 
 				if _, ok := payload["git.branch"]; ok && payload["git.repository"] == app.RepositoryFullname {
 					continue
 				}
 
-				defaultPayload, errPay := workflow.DefaultPayload(ctx, db, api.Cache, proj, &wf)
+				defaultPayload, errPay := workflow.DefaultPayload(ctx, db, api.Cache, proj, wf)
 				if errPay != nil {
-					return sdk.WrapError(errPay, "attachRepositoriesManager> Cannot get defaultPayload")
+					return sdk.WrapError(errPay, "cannot get defaultPayload")
 				}
-				wf.Root.Context.DefaultPayload = defaultPayload
-				if err := workflow.UpdateNodeContext(db, wf.Root.Context); err != nil {
-					return sdk.WrapError(err, "Cannot update node context %d", wf.Root.Context.ID)
+				wf.WorkflowData.Node.Context.DefaultPayload = defaultPayload
+
+				oldW, err := workflow.LoadByID(tx, api.Cache, proj, wf.ID, u, workflow.LoadOptions{})
+				if err != nil {
+					return sdk.WrapError(err, "unable to load previous version of workflow %s/%d", wf.Name, wf.ID)
+				}
+				if err := workflow.Update(ctx, tx, api.Cache, wf, oldW, proj, u); err != nil {
+					return sdk.WrapError(err, "unable to update workflow %s/%d", wf.Name, wf.ID)
 				}
 			}
 		}
@@ -493,41 +494,43 @@ func (api *API) detachRepositoriesManagerHandler() service.Handler {
 				return sdk.WrapError(errP, "detachRepositoriesManager> Cannot load project")
 			}
 
-			hookToDelete := map[string]sdk.WorkflowNodeHook{}
-			for _, wf := range usage.Workflows {
-				nodeHooks, err := workflow.LoadHooksByNodeID(db, wf.RootID)
-				if err != nil {
-					return sdk.WrapError(err, "Cannot load node hook by nodeID %d", wf.RootID)
-				}
-
-				for _, nodeHook := range nodeHooks {
-					if nodeHook.WorkflowHookModel.Name != sdk.RepositoryWebHookModelName && nodeHook.WorkflowHookModel.Name != sdk.GitPollerModelName {
-						continue
+			hookToDelete := map[string]sdk.NodeHook{}
+			for w := range usage.Workflows {
+				wf := &usage.Workflows[w]
+				nodes := wf.WorkflowData.Array()
+				for i := range nodes {
+					n := nodes[i]
+					for j := range n.Hooks {
+						h := n.Hooks[j]
+						if h.HookModelName == sdk.RepositoryWebHookModelName || h.HookModelName == sdk.GitPollerModelName {
+							hookToDelete[h.UUID] = h
+							n.Hooks = append(n.Hooks[:j], n.Hooks[j+1:]...)
+						}
 					}
-					hookToDelete[nodeHook.UUID] = nodeHook
 				}
-			}
 
-			if len(hookToDelete) > 0 {
 				txDel, errTx := db.Begin()
 				if errTx != nil {
 					return sdk.WrapError(errTx, "detachRepositoriesManager> Cannot create delete transaction")
 				}
-				defer func() {
-					_ = txDel.Rollback()
-				}()
-
-				for _, nodeHook := range hookToDelete {
-					if err := workflow.DeleteHook(txDel, &nodeHook); err != nil {
-						return sdk.WrapError(err, "Cannot delete hooks")
-					}
+				oldW, err := workflow.LoadByID(tx, api.Cache, proj, wf.ID, u, workflow.LoadOptions{})
+				if err != nil {
+					txDel.Rollback() // nolint
+					return sdk.WrapError(err, "unable to load previous version of workflow %s/%d", wf.Name, wf.ID)
 				}
+				if err := workflow.Update(ctx, tx, api.Cache, wf, oldW, proj, u); err != nil {
+					txDel.Rollback() // nolint
+					return sdk.WrapError(err, "unable to update workflow %s/%d", wf.Name, wf.ID)
+				}
+
 				if err := workflow.DeleteHookConfiguration(ctx, txDel, api.Cache, proj, hookToDelete); err != nil {
-					return sdk.WrapError(err, "Cannot delete hooks vcs configuration")
+					txDel.Rollback() // nolint
+					return sdk.WrapError(err, "cannot delete hooks vcs configuration")
 				}
 
 				if err := txDel.Commit(); err != nil {
-					return sdk.WrapError(err, "Cannot commit delete transaction")
+					txDel.Rollback() // nolint
+					return sdk.WrapError(err, "cannot commit delete transaction")
 				}
 			}
 		}

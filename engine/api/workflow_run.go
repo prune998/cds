@@ -562,7 +562,6 @@ func (api *API) getWorkflowCommitsHandler() service.Handler {
 		var app sdk.Application
 		var env sdk.Environment
 		var node *sdk.Node
-		var wNode *sdk.WorkflowNode
 		if wf != nil {
 			node = wf.WorkflowData.NodeByName(nodeName)
 			if node == nil {
@@ -594,9 +593,6 @@ func (api *API) getWorkflowCommitsHandler() service.Handler {
 		} else {
 			// Find hash and branch of ancestor node run
 			var nodeIDsAncestors []int64
-			if wNode != nil {
-				nodeIDsAncestors = wNode.Ancestors(&wfRun.Workflow, false)
-			}
 			if node != nil {
 				nodeIDsAncestors = node.Ancestors(wfRun.Workflow.WorkflowData)
 			}
@@ -787,9 +783,6 @@ func (api *API) postWorkflowRunHandler() service.Handler {
 			if errlr != nil {
 				return sdk.WrapError(errlr, "postWorkflowRunHandler> Unable to load workflow run")
 			}
-			if err := workflow.MigrateWorkflowRun(ctx, api.mustDB(), lastRun); err != nil {
-				return sdk.WrapError(err, "unable to migrate workflow run")
-			}
 		}
 
 		var wf *sdk.Workflow
@@ -937,7 +930,7 @@ func startWorkflowRun(ctx context.Context, db *gorp.DbMap, store cache.Store, p 
 		}
 
 		if !permission.AccessToWorkflowNode(wf, fromNode, u, permission.PermissionReadExecute) {
-			return nil, sdk.WrapError(sdk.ErrNoPermExecution, "not enough right on root node %d", wf.Root.ID)
+			return nil, sdk.WrapError(sdk.ErrNoPermExecution, "not enough right on root node %d", wf.WorkflowData.Node.ID)
 		}
 
 		// Continue  the current workflow run

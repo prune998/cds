@@ -108,12 +108,8 @@ func (s *Service) synchronizeTasks() error {
 	return nil
 }
 
-func (s *Service) hookToTask(h *sdk.WorkflowNodeHook) (*sdk.Task, error) {
-	if h.WorkflowHookModel.Type != sdk.WorkflowHookModelBuiltin {
-		return nil, fmt.Errorf("Unsupported hook type: %s", h.WorkflowHookModel.Type)
-	}
-
-	switch h.WorkflowHookModel.Name {
+func (s *Service) hookToTask(h *sdk.NodeHook) (*sdk.Task, error) {
+	switch h.HookModelName {
 	case sdk.KafkaHookModelName:
 		return &sdk.Task{
 			UUID:   h.UUID,
@@ -165,7 +161,7 @@ func (s *Service) hookToTask(h *sdk.WorkflowNodeHook) (*sdk.Task, error) {
 		}, nil
 	}
 
-	return nil, fmt.Errorf("Unsupported hook: %s", h.WorkflowHookModel.Name)
+	return nil, fmt.Errorf("unsupported hook: %s", h.HookModelName)
 }
 
 func (s *Service) startTasks(ctx context.Context) error {

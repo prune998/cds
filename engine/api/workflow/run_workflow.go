@@ -32,7 +32,7 @@ func RunFromHook(ctx context.Context, db gorp.SqlExecutor, store cache.Store, p 
 
 	report := new(ProcessorReport)
 
-	hooks := w.GetHooks()
+	hooks := w.WorkflowData.GetHooks()
 	h, ok := hooks[e.WorkflowNodeHookUUID]
 	if !ok {
 		return nil, report, sdk.ErrNoHook
@@ -41,7 +41,7 @@ func RunFromHook(ctx context.Context, db gorp.SqlExecutor, store cache.Store, p 
 	//If the hook is on the root, it will trigger a new workflow run
 	//Else if will trigger a new subnumber of the last workflow run
 	var number int64
-	if h.WorkflowNodeID == w.Root.ID {
+	if h.NodeID == w.WorkflowData.Node.ID {
 
 		if err := IsValid(ctx, store, db, w, p, nil); err != nil {
 			return nil, nil, sdk.WrapError(err, "Unable to valid workflow")
@@ -105,14 +105,14 @@ func RunFromHook(ctx context.Context, db gorp.SqlExecutor, store cache.Store, p 
 		number = lastWorkflowRun.Number
 
 		//Load the last definition of the hooks
-		oldHooks := lastWorkflowRun.Workflow.GetHooks()
+		oldHooks := lastWorkflowRun.Workflow.WorkflowData.GetHooks()
 		oldH, ok := oldHooks[h.UUID]
 		if !ok {
 			return nil, nil, sdk.WrapError(sdk.ErrNoHook, "RunFromHook> Hook not found")
 		}
 
 		//Process the workflow run from the node ID
-		r1, _, err := processWorkflowDataRun(ctx, db, store, p, lastWorkflowRun, e, nil, &oldH.WorkflowNodeID)
+		r1, _, err := processWorkflowDataRun(ctx, db, store, p, lastWorkflowRun, e, nil, &oldH.NodeID)
 		if err != nil {
 			return nil, nil, sdk.WrapError(err, "Unable to process workflow run")
 		}

@@ -242,11 +242,11 @@ func UpdateWorkflowAsCodeResult(ctx context.Context, db *gorp.DbMap, store cache
 			}
 
 			if !found {
-				h := sdk.WorkflowNodeHook{
-					Config:            sdk.RepositoryWebHookModel.DefaultConfig,
-					WorkflowHookModel: sdk.RepositoryWebHookModel,
+				h := sdk.NodeHook{
+					Config:        sdk.RepositoryWebHookModel.DefaultConfig,
+					HookModelName: sdk.RepositoryWebHookModel.Name,
 				}
-				wf.Root.Hooks = append(wf.Root.Hooks, h)
+				wf.WorkflowData.Node.Hooks = append(wf.WorkflowData.Node.Hooks, h)
 			}
 
 			// Update the workflow

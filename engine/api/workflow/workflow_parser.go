@@ -72,8 +72,6 @@ func ParseAndImport(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 		return nil, nil, sdk.WrapError(err, "Unable to rename node")
 	}
 
-	w.RetroMigrate()
-
 	if opts.WorkflowName != "" && w.Name != opts.WorkflowName {
 		return nil, nil, sdk.WrapError(sdk.ErrWorkflowNameImport, "Wrong workflow name")
 	}

@@ -87,36 +87,34 @@ func Pull(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, proj *sdk
 		}
 	}
 
-	apps := wf.GetApplications()
-	envs := wf.GetEnvironments()
-	pips := wf.GetPipelines()
-
 	//Reload app to retrieve secrets
-	for i := range apps {
-		app := &apps[i]
+	for i := range wf.Applications {
+		app := wf.Applications[i]
 		vars, errv := application.GetAllVariable(db, proj.Key, app.Name, application.WithClearPassword())
 		if errv != nil {
 			return wp, sdk.WrapError(errv, "cannot load application variables %s", app.Name)
 		}
 		app.Variable = vars
 
-		if err := application.LoadAllDecryptedKeys(db, app); err != nil {
+		if err := application.LoadAllDecryptedKeys(db, &app); err != nil {
 			return wp, sdk.WrapError(err, "cannot load application keys %s", app.Name)
 		}
+		wf.Applications[i] = app
 	}
 
 	//Reload env to retrieve secrets
-	for i := range envs {
-		env := &envs[i]
+	for i := range wf.Environments {
+		env := wf.Environments[i]
 		vars, errv := environment.GetAllVariable(db, proj.Key, env.Name, environment.WithClearPassword())
 		if errv != nil {
 			return wp, sdk.WrapError(errv, "cannot load environment variables %s", env.Name)
 		}
 		env.Variable = vars
 
-		if err := environment.LoadAllDecryptedKeys(db, env); err != nil {
+		if err := environment.LoadAllDecryptedKeys(db, &env); err != nil {
 			return wp, sdk.WrapError(err, "cannot load environment keys %s", env.Name)
 		}
+		wf.Environments[i] = env
 	}
 
 	buffw := new(bytes.Buffer)
@@ -126,8 +124,8 @@ func Pull(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, proj *sdk
 	wp.Workflow.Name = wf.Name
 	wp.Workflow.Value = base64.StdEncoding.EncodeToString(buffw.Bytes())
 
-	wp.Applications = make([]exportentities.WorkflowPulledItem, len(apps))
-	for i, a := range apps {
+	wp.Applications = make([]exportentities.WorkflowPulledItem, len(wf.Applications))
+	for i, a := range wf.Applications {
 		buff := new(bytes.Buffer)
 		if _, err := application.ExportApplication(db, a, f, encryptFunc, buff); err != nil {
 			return wp, sdk.WrapError(err, "unable to export app %s", a.Name)
@@ -136,8 +134,8 @@ func Pull(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, proj *sdk
 		wp.Applications[i].Value = base64.StdEncoding.EncodeToString(buff.Bytes())
 	}
 
-	wp.Environments = make([]exportentities.WorkflowPulledItem, len(envs))
-	for i, e := range envs {
+	wp.Environments = make([]exportentities.WorkflowPulledItem, len(wf.Environments))
+	for i, e := range wf.Environments {
 		buff := new(bytes.Buffer)
 		if _, err := environment.ExportEnvironment(db, e, f, encryptFunc, buff); err != nil {
 			return wp, sdk.WrapError(err, "unable to export env %s", e.Name)
@@ -146,8 +144,8 @@ func Pull(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, proj *sdk
 		wp.Environments[i].Value = base64.StdEncoding.EncodeToString(buff.Bytes())
 	}
 
-	wp.Pipelines = make([]exportentities.WorkflowPulledItem, len(pips))
-	for i, p := range pips {
+	wp.Pipelines = make([]exportentities.WorkflowPulledItem, len(wf.Pipelines))
+	for i, p := range wf.Pipelines {
 		buff := new(bytes.Buffer)
 		if _, err := pipeline.ExportPipeline(p, f, buff); err != nil {
 			return wp, sdk.WrapError(err, "unable to export pipeline %s", p.Name)
